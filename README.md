@@ -78,15 +78,15 @@ mentioned in extlinux.conf .
 
 ## Options
 
-- ```-L _size_``` Allocate _size_ space to the linux partition.
+- ```-L size``` Allocate _size_ space to the linux partition.
   For example, ```-L 6G``` , ```-L 6144M```, and ```-L 6291456K``` are the same.
-- ```-x *max_size*``` Refuse to process target drive of size
+- ```-x max_size``` Refuse to process target drive of size
   greater than *max_size*. The default is a relatively small
   value so that only usb flash drives gets processed,
   and external/internal harddisks are not
   inadvertently damaged. You can raise this value if you know
   what you are doing.
-- ```-t _type_``` Set linux partition to type ```_type_``` in fdisk.
+- ```-t type``` Set linux partition to type _type_ in fdisk.
   For ext2/3/4 file systems, use ```-t 83```.
   For zfs, use ```-t bf```.
 
@@ -167,12 +167,12 @@ extlinux.conf 裡面提及的所有檔案。
 
 ## 選項
 
-- ```-L _size_``` 配置 _size_ 空間給 linux 分割。
+- ```-L size``` 配置 _size_ 空間給 linux 分割。
   比方說， ```-L 6G``` 、 ```-L 6144M``` 、 ```-L 6291456K``` 效果相同。
-- ```-x *max_size*``` 拒絕處理容量超過 *max_size* 的隨身碟/硬碟。
+- ```-x max_size``` 拒絕處理容量超過 *max_size* 的隨身碟/硬碟。
   預設的數值只能處理隨身碟， 目的是要排除內接/外接硬碟，
   避免造成意外災害。 如果你知道自己在幹嘛， 可以把這個數值改大一些。
-- ```-t _type_``` 在 fdisk 裡面， 把 linux 分割的 type 設成 ```_type_```。
+- ```-t type``` 在 fdisk 裡面， 把 linux 分割的 type 設成 _type_。
   例如 ext2/3/4 檔案系統，請用 ```-t 83``` ；
   zfs 檔案系統，請用 ```-t bf```。
 
