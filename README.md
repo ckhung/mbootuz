@@ -50,6 +50,19 @@ and as many other usb drives as possible,
 each having >= 512MB available spaces,
 and promise not to disturb their existing files on the latter.
 
+To each of the usb drives containing precious data
+that cannot be destroyed, I run something like this:
+```
+    mount /dev/sdz1 /mnt/tmp1
+    mbootuz.py mkboot /dev/sdz
+    cp -a .../sysrcd .../clonezilla-live-2.5.0-25-amd64.iso /mnt/tmp1
+    umount /dev/sdz1
+```
+The second command installs the boot loader, etc. into /dev/sdz1 .
+Note: the sysrcd subdirectory in the cp command should contain
+[all the necessary files](http://www.system-rescue-cd.org/manual/Installing_SystemRescueCd_on_the_disk/)
+mentioned in extlinux.conf .
+
 To the empty usb drive, I run something like this:
 ```
     mbootuz.py wipe -L 7G -t 83 /dev/sdz
@@ -61,20 +74,25 @@ unformatted 7GB linux partition (type 0x83) /dev/sdz2,
 and leaves all the remaining space to the
 vfat partition /dev/sdz1, formatted.
 The second command installs the boot loader, etc. into /dev/sdz1 .
-The third command restores a full linux operating system
-to /dev/sdz2 .
+The third command restores a full linux operating system to /dev/sdz2 .
 
-To each of the usb drives containing precious data,
-I run something like this:
+Or, if you somehow (start from
+[here](https://github.com/zfsonlinux/zfs/wiki/Ubuntu-16.10-Root-on-ZFS))
+managed to manually install some linux in a usb drive
+(let's call its zpool "stem-cell"), then you can use it to boot and 
+clone a snapshot of this (running!) OS to a new drive flashy-new-usb as follows
+(change paths acoording to your situation):
 ```
     mount /dev/sdz1 /mnt/tmp1
-    mbootuz.py mkboot /dev/sdz
-    cp -a .../sysrcd .../clonezilla-live-2.5.0-25-amd64.iso /mnt/tmp1
+    cp -r /boot /mnt/tmp2/boot/lu1604z
     umount /dev/sdz1
+    zpool create flashy-new-usb /dev/sdz2
+    zpool import stem-cell
+    zfs list -t snapshot
+    zfs send -R stem-cell/ROOT/lu1604z@6-deploy | zfs receive -d -Fu flashy-new-usb
 ```
-The sysrcd subdirectory in the cp command should contain
-[all the necessary files](http://www.system-rescue-cd.org/manual/Installing_SystemRescueCd_on_the_disk/)
-mentioned in extlinux.conf .
+**Note**: You must ```zpool export flashy-new-usb ; umount /dev/sdz1```
+before you can **remove** the new usb or before you can use **kvm** to test it!
 
 ## Options
 
@@ -96,16 +114,6 @@ To protect the user from inadvertent and disastrous mistakes,
 ```mbootuz.py``` refuses to work on anything other than /dev/sd[b-z] .
 Obviously you can change the source code to remove this limitation.
 
-## Assorted Notes
-
-You can clone a (possibly running) usb drive stem-cell to a
-new drive flashy-new-usb as follows:
-```
-zpool create flashy-new-usb /dev/sdz2
-zpool import stem-cell
-zfs list -t snapshot
-zfs send -R stem-cell/ROOT/lu1604z@6-deploy | zfs receive -d -Fu flashy-new-usb
-```
 
 ## 簡介
 
@@ -143,6 +151,16 @@ linux 映像檔還原到 linux 分割。
 還有盡量多顆 「剩餘 >= 512MB 空間」 的其他任何隨身碟來上課，
 也告訴他們後者的資料不會被摧毀。
 
+對那些內含重要資料、 不可毀壞的隨身碟， 我這樣下指令：
+```
+    mount /dev/sdz1 /mnt/tmp1
+    mbootuz.py mkboot /dev/sdz
+    cp -a .../sysrcd .../clonezilla-live-2.5.0-25-amd64.iso /mnt/tmp1
+    umount /dev/sdz1
+```
+其中第二個指令把開機管理員等等安裝到 /dev/sdz1。
+又， cp 指令裡的 sysrcd 子目錄應包含 extlinux.conf 裡面提及的所有檔案。
+
 對那顆空白隨身碟， 我這樣下指令：
 ```
     mbootuz.py wipe -L 7G -t 83 /dev/sdz
@@ -155,15 +173,21 @@ linux 分割 (type 0x83) /dev/sdz2、
 第二個指令把開機管理員等等安裝到 /dev/sdz1。
 第三個指令把一個完整的 linux 作業系統還原到 /dev/sdz2。
 
-對其他包有重要資料的隨身碟， 我這樣下指令：
+或者， 如果你已成功地 [把 linux 栽種到一顆隨身碟的 zfs 裡](https://newtoypia.blogspot.tw/2017/03/zfs-root.html)
+(姑且稱它的 zpool 為 "stem-cell" 好了) 那麼你就可以用它開機，
+並且把這個 (正在運行的!) 作業系統的某個快照複製給一顆新的開機碟 flashy-new-usb
+(請自行把指令中的路徑改成你真實的狀況)：
 ```
     mount /dev/sdz1 /mnt/tmp1
-    mbootuz.py mkboot /dev/sdz
-    cp -a .../sysrcd .../clonezilla-live-2.5.0-25-amd64.iso /mnt/tmp1
+    cp -r /boot /mnt/tmp2/boot/lu1604z
     umount /dev/sdz1
+    zpool create flashy-new-usb /dev/sdz2
+    zpool import stem-cell
+    zfs list -t snapshot
+    zfs send -R stem-cell/ROOT/lu1604z@6-deploy | zfs receive -d -Fu flashy-new-usb
 ```
-其中 cp 指令裡的 sysrcd 子目錄應包含
-extlinux.conf 裡面提及的所有檔案。
+**注意**： 請務必先 ```zpool export flashy-new-usb ; umount /dev/sdz1```
+然後才可以**拔出**這顆新的隨身碟， 或用 **kvm** 去測試它。
 
 ## 選項
 
@@ -181,14 +205,4 @@ extlinux.conf 裡面提及的所有檔案。
 為避免使用者意外造成嚴重損害， ```mbootuz.py```
 只處理 /dev/sd[b-z] 這些裝置。
 當然， 你也可以自己修改原始碼， 移除這個限制。
-
-## 雜記
-
-可以從 (正在運行中也沒關係的) 開機碟 stem-cell 複製到新的開機碟 flashy-new-usb：
-```
-zpool create flashy-new-usb /dev/sdz2
-zpool import stem-cell
-zfs list -t snapshot
-zfs send -R stem-cell/ROOT/lu1604z@6-deploy | zfs receive -d -Fu flashy-new-usb
-```
 
