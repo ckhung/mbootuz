@@ -41,6 +41,23 @@ def wipe(args):
         communicate(input=fdisk_cmds)
     subprocess.call(['mkfs', '-t', 'vfat', args.TARGET+'1'])
 
+def mounted_at(dev):
+    m = re.search(dev + r'\b.*\s(\S+)$',
+        subprocess.check_output(['df']), flags=re.MULTILINE)
+    if (m):
+        mount_dir = m.group(1)
+	return (mount_dir, False)
+    else:
+        mount_dir = '/tmp/mbootuz-' + str(os.getpid())
+        subprocess.call(['mkdir', mount_dir])
+        try:
+            subprocess.check_output(['mount', dev, mount_dir])
+        except subprocess.CalledProcessError as e:
+            subprocess.call(['rmdir', mount_dir])
+            sys.exit('mount failure [' + e.output +
+                '], mbootuz aborted')
+        return (mount_dir, True)
+
 def mkboot(args):
     dev = args.TARGET
     try:
@@ -60,24 +77,26 @@ def mkboot(args):
     except subprocess.CalledProcessError as e:
         warnings.warn(args.TARGET +
             ' is not partitioned? using whole disk as one big file system')
-    m = re.search(dev + r'\b.*\s(\S+)$',
-        subprocess.check_output(['df']), flags=re.MULTILINE)
-    if (m):
-        mount_dir = m.group(1)
-        need_umount = False
-    else:
-        mount_dir = '/tmp/mbootuz-' + str(os.getpid())
-        subprocess.call(['mkdir', mount_dir])
-        try:
-            subprocess.check_output(['mount', dev, mount_dir])
-        except subprocess.CalledProcessError as e:
-            subprocess.call(['rmdir', mount_dir])
-            sys.exit('mount failure [' + e.output +
-                '], boot loader installation aborted')
-        need_umount = True
+    (mount_dir, need_umount) = mounted_at(dev)
     subprocess.call(['mkdir', '-p', mount_dir+'/boot'])
     subprocess.call(['cp', '-pr', '/usr/lib/syslinux', mount_dir+'/boot'])
     subprocess.call(['extlinux', '-i', mount_dir+'/boot/syslinux'])
+    if need_umount:
+        subprocess.call(['umount', dev])
+        subprocess.call(['rmdir', mount_dir])
+
+def live(args):
+    dev = args.TARGET
+    try:
+        subprocess.check_output(['ls', dev+'1'])
+        dev += '1'
+    except subprocess.CalledProcessError as e:
+        warnings.warn(args.TARGET +
+            ' is not partitioned? using whole disk as one big file system')
+    (mount_dir, need_umount) = mounted_at(dev)
+#    subprocess.call(['mkdir', '-p', mount_dir+'/boot'])
+#    subprocess.call(['cp', '-pr', '/usr/lib/syslinux', mount_dir+'/boot'])
+#    subprocess.call(['extlinux', '-i', mount_dir+'/boot/syslinux'])
     if need_umount:
         subprocess.call(['umount', dev])
         subprocess.call(['rmdir', mount_dir])
@@ -96,6 +115,7 @@ G = {
     'subcmds': {
         'wipe': wipe,
         'mkboot': mkboot,
+	'live': live,
     },
 }
 
@@ -109,13 +129,20 @@ parser.add_argument('-x', '--max', type=str,
     default='80G', help='max allowed size of TARGET device')
 parser.add_argument('-t', '--type', type=str,
     default='bf', help='type of linux partition ("bf" for zfs or "83" for ext2/3/4)')
+parser.add_argument('-o', '--options', type=str,
+    default='', help='special options such as force_sda')
 parser.add_argument('TARGET', help='target device, e.g. /dev/sdz')
 args = parser.parse_args()
 
 if not args.SUBCMD in G['subcmds']:
     sys.exit('error: valid subcommands: wipe, mkboot')
-if not re.search(r'^/dev/sd[b-z]$', args.TARGET):
-    sys.exit('error: I only accept /dev/sdb ... /dev/sdz as TARGET')
+
+if args.TARGET == '/dev/sda':
+    if not 'force_sda' in args.options:
+	sys.exit('use -o force_sda to enable /dev/sda as TARGET')
+else:
+    if not re.search(r'^/dev/sd[b-z]$', args.TARGET):
+	sys.exit('error: I only accept /dev/sda ... /dev/sdz as TARGET')
 
 args.size = normalize_size(args.size)
 args.max = normalize_size(args.max)
