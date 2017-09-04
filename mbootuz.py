@@ -1,10 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import argparse, re, sys, subprocess, math, time, os, warnings, glob
+import argparse, re, sys, subprocess, math, time, os, warnings
 from shutil import copy2 
-
-# import argparse, sys, math, warnings
 
 def wipe(args):
     if G['dev_size'] > args.max:
@@ -87,6 +85,12 @@ def mkboot(args):
         subprocess.call(['umount', dev])
         subprocess.call(['rmdir', mount_dir])
 
+def find_files(path, pattern):
+    n = len(path)
+    r = subprocess.check_output(['find', path, '-name', pattern]).split('\n')
+    r = [x[n:].lstrip('/') for x in r]
+    return [x for x in r if x]
+
 def mklive(args):
     dev = args.TARGET
     try:
@@ -95,22 +99,23 @@ def mklive(args):
     except subprocess.CalledProcessError as e:
         warnings.warn(args.TARGET +
             ' is not partitioned? using whole disk as one big file system')
-    kernel_list = glob.glob(args.iso_mount_dir+'/vmlinuz*')
+
+    kernel_list = find_files(args.iso_mount_dir, args.kernel)
+    initrd_list = find_files(args.iso_mount_dir, args.initrd)
+    rootfs_list = find_files(args.iso_mount_dir, args.rootfs)
+    # unlike isolinux.cfg, extlinux.conf does not need ldlinux.c32 to be at the same dir
     if not kernel_list:
-	sys.exit('cannot find vmlinuz* in ' + args.iso_mount_dir)
-    initrd_list = glob.glob(args.iso_mount_dir+'/initrd*')
+        sys.exit('error: found no '+args.kernel+' in '+args.iso_mount_dir)
     if not initrd_list:
-	sys.exit('cannot find initrd* in ' + args.iso_mount_dir)
+        sys.exit('error: found no '+args.initrd+' in '+args.iso_mount_dir)
+    if not rootfs_list:
+        warnings.warn('found no '+args.rootfs+' in '+args.iso_mount_dir+', continuing anyway')
     (mount_dir, need_umount) = mounted_at(dev)
     dst = mount_dir + '/' + args.dest_dir
     subprocess.call(['mkdir', '-p', dst])
-    for f in kernel_list + initrd_list:
-	copy2(f, dst)
-    if args.squashfs:
-	for f in glob.glob(args.squashfs):
-	    copy2(f, dst)
-    # copy2(mount_dir+'/boot/syslinux/modules/bios/ldlinux.c32', mount_dir+'/boot/syslinux/')
-    # unlike isolinux.cfg, extlinux.conf does not need ldlinux.c32 to be at the same dir
+    for f in kernel_list + initrd_list + rootfs_list:
+        print 'copying '+args.iso_mount_dir+'/'+f+' to '+dst+' ...'
+        copy2(args.iso_mount_dir+'/'+f, dst)
     with open(mount_dir+'/boot/syslinux/extlinux.conf', 'a') as cfg_file:
 	n = len(args.iso_mount_dir)
 	cfg_entry = '''
@@ -121,13 +126,13 @@ label mblcd-{lid}
 '''.format(
 	    lid=str(os.getpid()),
 	    dest=args.dest_dir,
-	    kernel=glob.glob(args.iso_mount_dir+'/vmlinuz*')[0][n:],
-	    initrd=glob.glob(args.iso_mount_dir+'/initrd*')[0][n:],
+            kernel='/'+kernel_list[0],
+	    initrd='/'+initrd_list[0],
 	    prof=args.profile
 	)
 	cfg_file.write(re.sub(r'/{2,}', '/', cfg_entry))
     pmd = '/tmp/mbootuz-' + str(os.getpid()) + '-pers'
-    pimg = mount_dir+args.dest_dir+'/' +args.profile
+    pimg = mount_dir+'/'+args.dest_dir+'/' +args.profile
     cmds='''
 dd count={size} bs=1048576 < /dev/zero > {pimg}
 mkfs -t ext4 {pimg}
@@ -138,6 +143,7 @@ sync
 umount {pmd}
 rmdir {pmd}
 '''.format(size=args.persistence, pimg=pimg, pmd=pmd)
+    print 'creating persistence image file '+pimg+' ...'
     subprocess.call(cmds, shell=True)
     if need_umount:
         subprocess.call(['sync'])
@@ -178,12 +184,16 @@ parser.add_argument('-P', '--persistence', type=str,
     default='512M', help='size of persistence file')
 parser.add_argument('-p', '--profile', type=str,
     default='stux.img', help='name of persistence file')
-parser.add_argument('-q', '--squashfs', type=str,
-    default='live/*.squashfs', help='path of source squashfs, relative to -i')
 parser.add_argument('-t', '--type', type=str,
     default='bf', help='type of linux partition ("bf" for zfs or "83" for ext2/3/4)')
 parser.add_argument('-x', '--max', type=str,
     default='80G', help='max allowed size of TARGET device')
+parser.add_argument('--kernel', type=str,
+    default='vmlinuz*', help='file name of kernel')
+parser.add_argument('--initrd', type=str,
+    default='initrd*', help='file name of initrd')
+parser.add_argument('--rootfs', type=str,
+    default='*.squashfs', help='file name of (squashfs) root')
 parser.add_argument('TARGET', help='target device, e.g. /dev/sdz')
 args = parser.parse_args()
 
@@ -199,8 +209,6 @@ else:
 
 if re.search(r'/dev/', args.iso_mount_dir):
     (args.iso_mount_dir, need_umount) = mounted_at(args.iso_mount_dir)
-if args.squashfs[0] != '/':
-    args.squashfs = args.iso_mount_dir + '/' + args.squashfs
 args.size = normalize_size(args.size)
 args.persistence = normalize_size(args.persistence)
 args.max = normalize_size(args.max)
