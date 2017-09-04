@@ -87,7 +87,7 @@ def mkboot(args):
         subprocess.call(['umount', dev])
         subprocess.call(['rmdir', mount_dir])
 
-def live(args):
+def mklive(args):
     dev = args.TARGET
     try:
         subprocess.check_output(['ls', dev+'1'])
@@ -102,29 +102,32 @@ def live(args):
     if not initrd_list:
 	sys.exit('cannot find initrd* in ' + args.iso_mount_dir)
     (mount_dir, need_umount) = mounted_at(dev)
-    subprocess.call(['mkdir', '-p', mount_dir+args.dest_dir])
+    dst = mount_dir + '/' + args.dest_dir
+    subprocess.call(['mkdir', '-p', dst])
     for f in kernel_list + initrd_list:
-	copy2(f, mount_dir+args.dest_dir)
+	copy2(f, dst)
     if args.squashfs:
 	for f in glob.glob(args.squashfs):
-	    copy2(f, mount_dir+args.dest_dir)
+	    copy2(f, dst)
     # copy2(mount_dir+'/boot/syslinux/modules/bios/ldlinux.c32', mount_dir+'/boot/syslinux/')
     # unlike isolinux.cfg, extlinux.conf does not need ldlinux.c32 to be at the same dir
     with open(mount_dir+'/boot/syslinux/extlinux.conf', 'a') as cfg_file:
 	n = len(args.iso_mount_dir)
 	cfg_entry = '''
-label live-cd-persistence
-	menu label Live CD w/ persistence
+label mblcd-{lid}
+	menu label mbootuz Live CD {lid} w/ persistence
 	kernel {dest}/{kernel}
-	append initrd={dest}/{initrd} boot=live live-media-path={dest} persistence persistence-path={dest} persistence-label=stux.img
+	append initrd={dest}/{initrd} boot=live live-media-path={dest} persistence persistence-path={dest} persistence-label={prof}
 '''.format(
+	    lid=str(os.getpid()),
 	    dest=args.dest_dir,
-	    kernel=glob.glob(args.iso_mount_dir+'/vmlinuz*')[0][n+1:],
-	    initrd=glob.glob(args.iso_mount_dir+'/initrd*')[0][n+1:],
+	    kernel=glob.glob(args.iso_mount_dir+'/vmlinuz*')[0][n:],
+	    initrd=glob.glob(args.iso_mount_dir+'/initrd*')[0][n:],
+	    prof=args.profile
 	)
-	cfg_file.write(cfg_entry)
+	cfg_file.write(re.sub(r'/{2,}', '/', cfg_entry))
     pmd = '/tmp/mbootuz-' + str(os.getpid()) + '-pers'
-    pimg = mount_dir+args.dest_dir+'/stux.img'
+    pimg = mount_dir+args.dest_dir+'/' +args.profile
     cmds='''
 dd count={size} bs=1048576 < /dev/zero > {pimg}
 mkfs -t ext4 {pimg}
@@ -155,26 +158,28 @@ G = {
     'subcmds': {
         'wipe': wipe,
         'mkboot': mkboot,
-	'live': live,
+	'mklive': mklive,
     },
 }
 
 parser = argparse.ArgumentParser(
-    description='make a bootable usb drive with zfs',
+    description='make a bootable usb drive, possibly with zfs',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('SUBCMD', help='valid subcommands: '+','.join(G['subcmds']))
 parser.add_argument('-d', '--dest_dir', type=str,
     default='/mblcd', help='dest dir relative to root of TARGET partition')
 parser.add_argument('-i', '--iso_mount_dir', type=str,
-    default='/lib/live/mount/medium', help='mount point of the (source) live-boot iso')
+    default='/dev/sr0', help='already-mounted iso device name or mount point of the (source) live-boot iso')
 parser.add_argument('-L', '--size', type=str,
     default='12G', help='size for linux partition')
 parser.add_argument('-o', '--options', type=str,
     default='', help='special options such as force_sda')
-parser.add_argument('-p', '--persistence', type=str,
+parser.add_argument('-P', '--persistence', type=str,
     default='512M', help='size of persistence file')
+parser.add_argument('-p', '--profile', type=str,
+    default='stux.img', help='name of persistence file')
 parser.add_argument('-q', '--squashfs', type=str,
-    default='/lib/live/mount/medium/live/*.squashfs', help='path of source squashfs')
+    default='live/*.squashfs', help='path of source squashfs, relative to -i')
 parser.add_argument('-t', '--type', type=str,
     default='bf', help='type of linux partition ("bf" for zfs or "83" for ext2/3/4)')
 parser.add_argument('-x', '--max', type=str,
@@ -192,6 +197,10 @@ else:
     if not re.search(r'^/dev/sd[b-z]$', args.TARGET):
 	sys.exit('error: I only accept /dev/sda ... /dev/sdz as TARGET')
 
+if re.search(r'/dev/', args.iso_mount_dir):
+    (args.iso_mount_dir, need_umount) = mounted_at(args.iso_mount_dir)
+if args.squashfs[0] != '/':
+    args.squashfs = args.iso_mount_dir + '/' + args.squashfs
 args.size = normalize_size(args.size)
 args.persistence = normalize_size(args.persistence)
 args.max = normalize_size(args.max)
