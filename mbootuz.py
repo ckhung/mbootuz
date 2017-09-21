@@ -100,6 +100,8 @@ def mklive(args):
         warnings.warn(args.TARGET +
             ' is not partitioned? using whole disk as one big file system')
 
+    if re.search(r'/dev/', args.iso_mount_dir):
+        (args.iso_mount_dir, need_umount) = mounted_at(args.iso_mount_dir)
     kernel_list = find_files(args.iso_mount_dir, args.kernel)
     initrd_list = find_files(args.iso_mount_dir, args.initrd)
     rootfs_list = find_files(args.iso_mount_dir, args.rootfs)
@@ -207,8 +209,6 @@ else:
     if not re.search(r'^/dev/sd[b-z]$', args.TARGET):
 	sys.exit('error: I only accept /dev/sda ... /dev/sdz as TARGET')
 
-if re.search(r'/dev/', args.iso_mount_dir):
-    (args.iso_mount_dir, need_umount) = mounted_at(args.iso_mount_dir)
 args.size = normalize_size(args.size)
 args.persistence = normalize_size(args.persistence)
 args.max = normalize_size(args.max)
