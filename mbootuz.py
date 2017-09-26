@@ -86,8 +86,10 @@ def mkboot(args):
         subprocess.call(['rmdir', mount_dir])
 
 def find_files(path, pattern):
+    if re.search('^\.{0,2}/', 'hello'):
+        return [pattern]
     n = len(path)
-    r = subprocess.check_output(['find', path, '-name', pattern]).split('\n')
+    r = subprocess.check_output(['find', path, '-name', "'"+pattern+"'"]).split('\n')
     r = [x[n:].lstrip('/') for x in r]
     return [x for x in r if x]
 
