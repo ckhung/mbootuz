@@ -1,10 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import argparse, re, sys, subprocess, math, time, os, warnings
+import argparse, re, sys, subprocess, math, time, os, warnings, atexit
 from shutil import copy2 
 
 def wipe(args):
+    if args.dryrun:
+	sys.exit('the wipe subcommand does not support dryrun mode')
     if G['dev_size'] > args.max:
         sys.exit('error: I only process devices of size < ' + str(args.max) + 'M')
     if args.size > G['dev_size']:
@@ -40,104 +42,166 @@ def wipe(args):
         communicate(input=fdisk_cmds)
     subprocess.call(['mkfs', '-t', 'vfat', args.TARGET+'1'])
 
-def mounted_at(dev):
-    m = re.search(dev + r'\b.*\s(\S+)$',
-        subprocess.check_output(['df']), flags=re.MULTILINE)
-    if (m):
-        mount_dir = m.group(1)
-	return (mount_dir, False)
+def cleanup(mount_point):
+    subprocess.call(['sync'])
+    subprocess.call(['umount', mount_point])
+    subprocess.call(['rmdir', mount_point])
+
+def mounted_at(dev='', loopback=''):
+    df = subprocess.check_output(['df'])
+    if dev:
+	fn = dev[dev.rfind('/')+1:]
+	dev_or_loop = dev
+	m = re.search('^' + dev + r'\s.*\s(\S+)$', df, flags=re.MULTILINE)
+    elif loopback:
+	dev_or_loop = loopback
+	fn = loopback[loopback.rfind('/')+1:]
+	m = re.search(r'\s(/lib/live/\S*' + fn + ')$', df, flags=re.MULTILINE)
     else:
-        mount_dir = '/tmp/mbootuz-' + str(os.getpid())
-        subprocess.call(['mkdir', mount_dir])
+	sys.exit('mounted_at() needs at least one arg')
+    if (m):
+	return m.group(1)
+    else:
+        target_mp = '/tmp/mbootuz-' + str(os.getpid()) + '-' + fn
+        subprocess.call(['mkdir', target_mp])
         try:
-            subprocess.check_output(['mount', dev, mount_dir])
+            subprocess.check_output(['mount', dev_or_loop, target_mp])
         except subprocess.CalledProcessError as e:
-            subprocess.call(['rmdir', mount_dir])
+            subprocess.call(['rmdir', target_mp])
             sys.exit('mount failure [' + e.output +
                 '], mbootuz aborted')
-        return (mount_dir, True)
+	atexit.register(cleanup, target_mp)
+        return target_mp
 
 def mkboot(args):
-    dev = args.TARGET
+    if args.dryrun:
+	sys.exit('the mkboot subcommand does not support dryrun mode')
+    tdev = args.TARGET
     try:
         subprocess.check_output(['ls', args.TARGET+'1'])
-        dev += '1'
+        tdev += '1'
         subprocess.call(['dd', 'bs=440', 'count=1',
             'if=/usr/lib/syslinux/mbr/mbr.bin', 'of='+args.TARGET])
         time.sleep(1)
         tmp = subprocess.check_output(['fdisk', '-l', args.TARGET])
-        if not re.search(dev + r'\b', tmp):
-            sys.exit('unexpected error: no entry for ' + dev + ' in `fdisk -l`')
-        if not re.search(dev + r'\s+\*', tmp):
+        if not re.search(tdev + r'\b', tmp):
+            sys.exit('unexpected error: no entry for ' + tdev + ' in `fdisk -l`')
+        if not re.search(tdev + r'\s+\*', tmp):
             # partition was not set active
-            print 'using fdisk to activate ' + dev
+            print 'using fdisk to activate ' + tdev
             subprocess.Popen(['fdisk', args.TARGET], stdin=subprocess.PIPE). \
                 communicate(input='a\n1\nw\n')
     except subprocess.CalledProcessError as e:
         warnings.warn(args.TARGET +
             ' is not partitioned? using whole disk as one big file system')
-    (mount_dir, need_umount) = mounted_at(dev)
-    subprocess.call(['mkdir', '-p', mount_dir+'/boot'])
-    subprocess.call(['cp', '-pr', '/usr/lib/syslinux', mount_dir+'/boot'])
-    subprocess.call(['extlinux', '-i', mount_dir+'/boot/syslinux'])
-    if need_umount:
-        subprocess.call(['sync'])
-        subprocess.call(['umount', dev])
-        subprocess.call(['rmdir', mount_dir])
+    target_mp = mounted_at(tdev)
+    subprocess.call(['mkdir', '-p', target_mp+'/boot'])
+    subprocess.call(['cp', '-pr', '/usr/lib/syslinux', target_mp+'/boot'])
+    subprocess.call(['extlinux', '-i', target_mp+'/boot/syslinux'])
 
 def find_files(path, pattern):
-    if re.search('^\.{0,2}/', 'hello'):
-        return [pattern]
     n = len(path)
-    r = subprocess.check_output(['find', path, '-name', "'"+pattern+"'"]).split('\n')
+    r = subprocess.check_output(['find', path, '-name', pattern]).split('\n')
     r = [x[n:].lstrip('/') for x in r]
     return [x for x in r if x]
 
 def mklive(args):
-    dev = args.TARGET
+    sys.exit('the subcommand "mklive" has been replaced by "cplive", with different options. "mbootuz.py -h" to see help')
+
+def cplive(args):
+    tdev = args.TARGET
     try:
-        subprocess.check_output(['ls', dev+'1'])
-        dev += '1'
+        subprocess.check_output(['ls', tdev+'1'])
+        tdev += '1'
     except subprocess.CalledProcessError as e:
         warnings.warn(args.TARGET +
             ' is not partitioned? using whole disk as one big file system')
 
-    if re.search(r'/dev/', args.iso_mount_dir):
-        (args.iso_mount_dir, need_umount) = mounted_at(args.iso_mount_dir)
-    kernel_list = find_files(args.iso_mount_dir, args.kernel)
-    initrd_list = find_files(args.iso_mount_dir, args.initrd)
-    rootfs_list = find_files(args.iso_mount_dir, args.rootfs)
-    # unlike isolinux.cfg, extlinux.conf does not need ldlinux.c32 to be at the same dir
-    if not kernel_list:
-        sys.exit('error: found no '+args.kernel+' in '+args.iso_mount_dir)
-    if not initrd_list:
-        sys.exit('error: found no '+args.initrd+' in '+args.iso_mount_dir)
-    if not rootfs_list:
-        warnings.warn('found no '+args.rootfs+' in '+args.iso_mount_dir+', continuing anyway')
-    (mount_dir, need_umount) = mounted_at(dev)
-    dst = mount_dir + '/' + args.dest_dir
+    df = ''
+    if not args.squashfs :
+	df = subprocess.check_output(['df']).split('\n')
+	line = next((line for line in df if re.search(r'/lib/live/', line)), '')
+	m = re.search(r'(/lib/live/\S+)', line)
+	if not m:
+	    sys.exit('--squashfs is empty and "df" finds no /lib/live/...')
+	args.squashfs = m.group(1)
+    if re.search(r'\.squashfs$', args.squashfs):
+	# the mount point name ends in .squashfs => we were booted toram, files in iso are inaccessible, the squashfs image will have to be accessed using dd
+	sq_mp = args.squashfs
+    else:
+	if os.path.isdir(args.squashfs):
+	    squashfs_list = find_files(args.squashfs, '*\.squashfs')
+	    if not squashfs_list:
+		sys.exit('cannot find *.squashfs under '+args.squashfs)
+	    if len(squashfs_list) > 1:
+		warnings.warn('found more than one squashfs')
+	    args.squashfs += '/' + squashfs_list[0]
+	    print 'using ' + args.squashfs + ' as rootfs'
+	# https://stackoverflow.com/questions/32073498/check-if-file-is-readable-with-python-try-or-if-else
+	sq_mp = mounted_at(loopback=args.squashfs)
+    sq_bn = args.squashfs[args.squashfs.rfind('/')+1:]
+
+    kernel_fp = sq_mp + '/boot/' + args.kernel if args.kernel else os.path.realpath(sq_mp + '/vmlinuz')
+    if not os.access(kernel_fp, os.R_OK):
+        sys.exit('cannot read ' + kernel_fp)
+    args.kernel = kernel_fp[kernel_fp.rfind('/')+1:]
+    initrd_fp = sq_mp + '/boot/' + args.initrd if args.initrd else os.path.realpath(sq_mp + '/initrd.img')
+    if not os.access(initrd_fp, os.R_OK):
+        sys.exit('cannot read ' + initrd_fp)
+    args.initrd = initrd_fp[initrd_fp.rfind('/')+1:]
+
+    target_mp = mounted_at(tdev)
+    if args.dest_dir[0] != '/':
+	args.dest_dir = '/' + args.dest_dir
+    dst = target_mp + args.dest_dir
+    if dst[-1] != '/':
+	dst += '/'
     subprocess.call(['mkdir', '-p', dst])
-    for f in kernel_list + initrd_list + rootfs_list:
-        print 'copying '+args.iso_mount_dir+'/'+f+' to '+dst+' ...'
-        copy2(args.iso_mount_dir+'/'+f, dst)
-    with open(mount_dir+'/boot/syslinux/extlinux.conf', 'a') as cfg_file:
-	n = len(args.iso_mount_dir)
-	cfg_entry = '''
-label mblcd-{lid}
+    for f in [kernel_fp, initrd_fp]:
+        print 'copying '+f+' to '+dst+' ...'
+	if not args.dryrun:
+	    copy2(f, dst)
+    if sq_mp == args.squashfs:
+	print "dd'ing /dev/loop0 to "+dst+" as "+ sq_bn
+	if not args.dryrun:
+	    subprocess.call(['dd', 'if=/dev/loop0', 'of='+dst+'/'+sq_bn])
+    else:
+        print 'copying '+args.squashfs+' to '+dst+' ...'
+	if not args.dryrun:
+	    copy2(args.squashfs, dst)
+
+    cfg_entry = '''
+label mblcd-toram-{lid}
+	menu label mbootuz Live CD {lid} boot to ram!
+	kernel {dest}/{kernel}
+	append initrd={dest}/{initrd} boot=live live-media-path={dest} toram={squashfs}
+'''
+    if args.profile:
+	cfg_entry += '''
+label mblcd-persistence-{lid}
 	menu label mbootuz Live CD {lid} w/ persistence
 	kernel {dest}/{kernel}
 	append initrd={dest}/{initrd} boot=live live-media-path={dest} persistence persistence-path={dest} persistence-label={prof}
-'''.format(
-	    lid=str(os.getpid()),
-	    dest=args.dest_dir,
-            kernel='/'+kernel_list[0],
-	    initrd='/'+initrd_list[0],
-	    prof=args.profile
-	)
-	cfg_file.write(re.sub(r'/{2,}', '/', cfg_entry))
-    pmd = '/tmp/mbootuz-' + str(os.getpid()) + '-pers'
-    pimg = mount_dir+'/'+args.dest_dir+'/' +args.profile
-    cmds='''
+'''
+    cfg_entry = cfg_entry.format(
+	lid=str(os.getpid()),
+	dest=args.dest_dir,
+	kernel=args.kernel,
+	initrd=args.initrd,
+	squashfs=sq_bn,
+	prof=args.profile
+    )
+    cfg_entry = re.sub(r'/{2,}', '/', cfg_entry)
+    if not args.dryrun:
+	with open(target_mp+'/boot/syslinux/extlinux.conf', 'a') as cfg_file:
+	    cfg_file.write(cfg_entry)
+    else:
+	print cfg_entry
+
+    if args.profile:
+	pmd = '/tmp/mbootuz-' + str(os.getpid()) + '-pers'
+	pimg = target_mp+'/'+args.dest_dir+'/' +args.profile
+	cmds='''
 dd count={size} bs=1048576 < /dev/zero > {pimg}
 mkfs -t ext4 {pimg}
 mkdir {pmd}
@@ -146,13 +210,10 @@ echo '/ union' > {pmd}/persistence.conf
 sync
 umount {pmd}
 rmdir {pmd}
-'''.format(size=args.persistence, pimg=pimg, pmd=pmd)
-    print 'creating persistence image file '+pimg+' ...'
-    subprocess.call(cmds, shell=True)
-    if need_umount:
-        subprocess.call(['sync'])
-        subprocess.call(['umount', dev])
-        subprocess.call(['rmdir', mount_dir])
+'''.format(size=args.persize, pimg=pimg, pmd=pmd)
+	print 'creating persistence image file '+pimg+' ...'
+	if not args.dryrun:
+	    subprocess.call(cmds, shell=True)
 
 def normalize_size(s):
     if (re.search(r'^\d+k$', s, flags=re.IGNORECASE)):
@@ -169,6 +230,7 @@ G = {
         'wipe': wipe,
         'mkboot': mkboot,
 	'mklive': mklive,
+	'cplive': cplive,
     },
 }
 
@@ -178,26 +240,27 @@ parser = argparse.ArgumentParser(
 parser.add_argument('SUBCMD', help='valid subcommands: '+','.join(G['subcmds']))
 parser.add_argument('-d', '--dest_dir', type=str,
     default='/mblcd', help='dest dir relative to root of TARGET partition')
-parser.add_argument('-i', '--iso_mount_dir', type=str,
-    default='/dev/sr0', help='already-mounted iso device name or mount point of the (source) live-boot iso')
 parser.add_argument('-L', '--size', type=str,
     default='12G', help='size for linux partition')
+# https://stackoverflow.com/questions/9183936/boolean-argument-for-script
+parser.add_argument('-n', '--dryrun', action='store_true',
+    default=False, help='do not actually copy files (only for cplive)')
 parser.add_argument('-o', '--options', type=str,
     default='', help='special options such as force_sda')
-parser.add_argument('-P', '--persistence', type=str,
-    default='512M', help='size of persistence file')
 parser.add_argument('-p', '--profile', type=str,
-    default='stux.img', help='name of persistence file')
+    default='', help='name of persistence profile')
 parser.add_argument('-t', '--type', type=str,
     default='bf', help='type of linux partition ("bf" for zfs or "83" for ext2/3/4)')
 parser.add_argument('-x', '--max', type=str,
     default='80G', help='max allowed size of TARGET device')
+parser.add_argument('-Z', '--persize', type=str,
+    default='512M', help='size of persistence file')
 parser.add_argument('--kernel', type=str,
-    default='vmlinuz*', help='file name of kernel')
+    default='', help='file name (relative to /boot in *.squashfs) of kernel')
 parser.add_argument('--initrd', type=str,
-    default='initrd*', help='file name of initrd')
-parser.add_argument('--rootfs', type=str,
-    default='*.squashfs', help='file name of (squashfs) root')
+    default='', help='file name (relative to /boot in *.squashfs) of initrd')
+parser.add_argument('-q', '--squashfs', type=str,
+    default='', help='search directory or full path of the root squashfs image')
 parser.add_argument('TARGET', help='target device, e.g. /dev/sdz')
 args = parser.parse_args()
 
@@ -212,7 +275,7 @@ else:
 	sys.exit('error: I only accept /dev/sda ... /dev/sdz as TARGET')
 
 args.size = normalize_size(args.size)
-args.persistence = normalize_size(args.persistence)
+args.persize = normalize_size(args.persize)
 args.max = normalize_size(args.max)
 G['dev_size'] = normalize_size(
     subprocess.check_output(['fdisk', '-s', args.TARGET]).strip()+'K')
