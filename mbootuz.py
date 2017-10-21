@@ -108,7 +108,7 @@ def find_files(path, pattern):
 def find_boot_files(name, shortname, basedir):
 # find vmlinuz or initrd
     if name:
-        fullpath = basedir + '/boot/' + name
+        fullpath = name if name[0]=='/' else basedir + '/boot/' + name
     else:
         # try the (only) symlink at the root directory
         try1 = basedir + '/' + shortname + '*'
