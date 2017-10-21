@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import argparse, re, sys, subprocess, math, time, os, warnings, atexit
+import argparse, re, sys, subprocess, math, time, os, warnings, atexit, glob
 from shutil import copy2 
 
 def wipe(args):
@@ -96,7 +96,7 @@ def mkboot(args):
             ' is not partitioned? using whole disk as one big file system')
     target_mp = mounted_at(tdev)
     subprocess.call(['mkdir', '-p', target_mp+'/boot'])
-    subprocess.call(['cp', '-pr', '/usr/lib/syslinux', target_mp+'/boot'])
+    subprocess.call(['cp', '-r', '--preserve=mode,timestamps', '/usr/lib/syslinux', target_mp+'/boot'])
     subprocess.call(['extlinux', '-i', target_mp+'/boot/syslinux'])
 
 def find_files(path, pattern):
@@ -104,6 +104,29 @@ def find_files(path, pattern):
     r = subprocess.check_output(['find', path, '-name', pattern]).split('\n')
     r = [x[n:].lstrip('/') for x in r]
     return [x for x in r if x]
+
+def find_boot_files(name, shortname, basedir):
+# find vmlinuz or initrd
+    if name:
+        fullpath = basedir + '/boot/' + name
+    else:
+        # try the (only) symlink at the root directory
+        try1 = basedir + '/' + shortname + '*'
+        found = sorted(glob.glob(try1))
+        if len(found) >= 1 and os.access(found[0], os.R_OK):
+            fullpath = os.path.realpath(found[0])
+        else:
+            # try the highest numbered version at /boot
+            try2 = basedir + '/boot/' + shortname + '*'
+            found = sorted(glob.glob(try2))
+            if len(found) < 1:
+                sys.exit('cannot read ' + try1 + ' and cannot find ' + try2)
+            fullpath = found[-1]
+            if (len(found) > 1):
+                warnings.warn('found more than one ' + try2 + ' , using ' + fullpath)
+    if not os.access(fullpath, os.R_OK):
+        sys.exit('failed to read ' + fullpath)
+    return fullpath
 
 def mklive(args):
     sys.exit('the subcommand "mklive" has been replaced by "cplive", with different options. "mbootuz.py -h" to see help')
@@ -141,13 +164,9 @@ def cplive(args):
 	sq_mp = mounted_at(loopback=args.squashfs)
     sq_bn = args.squashfs[args.squashfs.rfind('/')+1:]
 
-    kernel_fp = sq_mp + '/boot/' + args.kernel if args.kernel else os.path.realpath(sq_mp + '/vmlinuz')
-    if not os.access(kernel_fp, os.R_OK):
-        sys.exit('cannot read ' + kernel_fp)
+    kernel_fp = find_boot_files(args.kernel, 'vmlinuz', sq_mp)
     args.kernel = kernel_fp[kernel_fp.rfind('/')+1:]
-    initrd_fp = sq_mp + '/boot/' + args.initrd if args.initrd else os.path.realpath(sq_mp + '/initrd.img')
-    if not os.access(initrd_fp, os.R_OK):
-        sys.exit('cannot read ' + initrd_fp)
+    initrd_fp = find_boot_files(args.initrd, 'initrd', sq_mp)
     args.initrd = initrd_fp[initrd_fp.rfind('/')+1:]
 
     target_mp = mounted_at(tdev)
@@ -171,21 +190,21 @@ def cplive(args):
 	    copy2(args.squashfs, dst)
 
     cfg_entry = '''
-label mblcd-toram-{lid}
-	menu label mbootuz Live CD {lid} boot to ram!
-	kernel {dest}/{kernel}
-	append initrd={dest}/{initrd} boot=live live-media-path={dest} toram={squashfs}
+label {dest}-toram-{lid}
+	menu label {dest} linux live CD {lid} boot to ram!
+	kernel /{dest}/{kernel}
+	append initrd=/{dest}/{initrd} boot=live live-media-path=/{dest} toram={squashfs}
 '''
     if args.profile:
 	cfg_entry += '''
-label mblcd-persistence-{lid}
-	menu label mbootuz Live CD {lid} w/ persistence
-	kernel {dest}/{kernel}
-	append initrd={dest}/{initrd} boot=live live-media-path={dest} persistence persistence-path={dest} persistence-label={prof}
+label {dest}-persistence-{lid}
+	menu label {dest} linux live CD {lid} w/ persistence
+	kernel /{dest}/{kernel}
+	append initrd=/{dest}/{initrd} boot=live live-media-path=/{dest} persistence persistence-path=/{dest} persistence-label={prof}
 '''
     cfg_entry = cfg_entry.format(
 	lid=str(os.getpid()),
-	dest=args.dest_dir,
+	dest=args.dest_dir[1:],
 	kernel=args.kernel,
 	initrd=args.initrd,
 	squashfs=sq_bn,
@@ -200,7 +219,7 @@ label mblcd-persistence-{lid}
 
     if args.profile:
 	pmd = '/tmp/mbootuz-' + str(os.getpid()) + '-pers'
-	pimg = target_mp+'/'+args.dest_dir+'/' +args.profile
+	pimg = target_mp + args.dest_dir + '/' +args.profile
 	cmds='''
 dd count={size} bs=1048576 < /dev/zero > {pimg}
 mkfs -t ext4 {pimg}
