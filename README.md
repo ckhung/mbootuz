@@ -2,8 +2,9 @@
 
 mbootuz makes it easier for sys admins to write simple shell scripts
 for creating bootable usb flash drive (usb stick).
-[The English doc is out of date. You can follow the
-links and ```commands``` in the zh_TW doc for now.
+[The English doc is incomplete but still valid.
+Info about ```mbootuz cplive``` is missing.
+For now, you can follow the links and ```commands``` in the zh_TW doc.
 It is written more as a tutorial than a reference manual
 and suitable for trying in the text order.]
 
@@ -124,6 +125,13 @@ Obviously you can change the source code to remove this limitation.
 
 ```mbootuz.py``` 讓你可以用幾個簡單的指令
 (甚至可以寫 shell script) 來製作 linux 開機隨身碟。
+它特別適用於某些 debian 衍生版本的 .iso 檔
+(例如 grml linux、 AV linux、 kali linux 等等)，
+兩個指令就可以從這樣的 .iso 檔製作出開機隨身碟。
+它還可以順便建立 persistence 機制來儲存任何變動，
+讓你感覺就像在用安裝在硬碟上的版本一樣
+(只是佔用空間更小、 安裝速度更快)，
+每次重開機都可以接續前次關機前的工作。
 你必須用 root 的身份執行它。 
 
 這份文件比較像教學文， 比較不像完整的手冊； 本文適合大致按順序閱讀。
@@ -141,7 +149,7 @@ Obviously you can change the source code to remove this limitation.
 ```
 apt-get install syslinux extlinux
 wget https://github.com/ckhung/mbootuz/archive/master.zip
-# 解壓縮, mbootuz.py => /usr/sbin/mbootuz.py, syslinux/* => /usr/lib/syslinux
+# 解壓縮之後複製檔案: mbootuz.py => /usr/sbin/mbootuz.py, syslinux/* => /usr/lib/syslinux
 chmod u+x /usr/sbin/mbootuz.py
 mbootuz.py -h
 ```
@@ -189,6 +197,8 @@ cplive 只會建立目錄及複製檔案； mkboot 還會動到開機磁區。
 但並沒有真的安裝任何作業系統。
 接下來還要把設定檔裡面所提到的數個開機檔案放到定位，
 隨身碟才能真的拿來開機進入 linux 作業系統。
+
+對運作細節沒興趣的讀者， 可以直接跳到第六節。
 
 ## 五、 手動複製 live CD 所需的開機檔案
 
@@ -276,18 +286,18 @@ mbootuz.py cplive -n -q /mnt/t1 -d grml /dev/sdz
 https://newtoypia.blogspot.tw/2015/02/extlinux.html)
 
 又例如 [AV linux](http://www.bandshed.net/avlinux/)
+跟 [kali linux](https://www.kali.org/) 
 也可以用這樣的方式把下載回來的 iso 檔製作成開機隨身碟的選項之一。
-但是 AV linux 的容量比 grml 大很多， 如果你的電腦記憶體不到 8G，
+但是它們的容量比 grml 大很多， 所以如果你的電腦記憶體不到 8G，
 就必須把 extlinux.conf 新選項裡面的
-```toram=filesystem.squashfs``` 這一小段刪掉。
-這段的意思是把整個映像檔載入記憶體。 (所以剛才的
-grml linux 開完機之後， 其實可以豪邁帥氣裸奔!)
+```toram=filesystem.squashfs``` 這一小段刪掉，
+取消豪邁帥氣裸奔的功能。 (對， 所以剛才的 grml linux
+開完機之後， 其實可以拔掉隨身碟， 豪邁帥氣裸奔。)
 
 ## 七、 Persistence： 同時享受唯讀的輕巧跟寫入的便利
 
 因為 squashfs 是唯讀的檔案系統， 所以可以壓縮得非常小。
 一個 2G 的 squashfs， 裡面所含的軟體可能高達 5G 甚至 6G 的價值。
-
 但也因為唯讀， 你在 live CD 上面所做的任何設定、
 所安裝的任何軟體， 只限此次開機有效。
  一旦重新開機， 一切都歸零重來。
