@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
 import argparse, re, sys, subprocess, math, time, os, warnings, atexit, glob
@@ -6,7 +6,7 @@ from shutil import copy2
 
 def wipe(args):
     if args.dryrun:
-	sys.exit('the wipe subcommand does not support dryrun mode')
+        sys.exit('the wipe subcommand does not support dryrun mode')
     if G['dev_size'] > args.max:
         sys.exit('error: I only process devices of size < ' + str(args.max) + 'M')
     if args.size > G['dev_size']:
@@ -50,17 +50,17 @@ def cleanup(mount_point):
 def mounted_at(dev='', loopback=''):
     df = subprocess.check_output(['df'])
     if dev:
-	fn = dev[dev.rfind('/')+1:]
-	dev_or_loop = dev
-	m = re.search('^' + dev + r'\s.*\s(\S+)$', df, flags=re.MULTILINE)
+        fn = dev[dev.rfind('/')+1:]
+        dev_or_loop = dev
+        m = re.search('^' + dev + r'\s.*\s(\S+)$', df, flags=re.MULTILINE)
     elif loopback:
-	dev_or_loop = loopback
-	fn = loopback[loopback.rfind('/')+1:]
-	m = re.search(r'\s(/lib/live/\S*' + fn + ')$', df, flags=re.MULTILINE)
+        dev_or_loop = loopback
+        fn = loopback[loopback.rfind('/')+1:]
+        m = re.search(r'\s(/lib/live/\S*' + fn + ')$', df, flags=re.MULTILINE)
     else:
-	sys.exit('mounted_at() needs at least one arg')
+        sys.exit('mounted_at() needs at least one arg')
     if (m):
-	return m.group(1)
+        return m.group(1)
     else:
         target_mp = '/tmp/mbootuz-' + str(os.getpid()) + '-' + fn
         subprocess.call(['mkdir', target_mp])
@@ -70,12 +70,12 @@ def mounted_at(dev='', loopback=''):
             subprocess.call(['rmdir', target_mp])
             sys.exit('mount failure [' + e.output +
                 '], mbootuz aborted')
-	atexit.register(cleanup, target_mp)
+        atexit.register(cleanup, target_mp)
         return target_mp
 
 def mkboot(args):
     if args.dryrun:
-	sys.exit('the mkboot subcommand does not support dryrun mode')
+        sys.exit('the mkboot subcommand does not support dryrun mode')
     tdev = args.TARGET
     try:
         subprocess.check_output(['ls', args.TARGET+'1'])
@@ -88,7 +88,7 @@ def mkboot(args):
             sys.exit('unexpected error: no entry for ' + tdev + ' in `fdisk -l`')
         if not re.search(tdev + r'\s+\*', tmp):
             # partition was not set active
-            print 'using fdisk to activate ' + tdev
+            print('using fdisk to activate ' + tdev)
             subprocess.Popen(['fdisk', args.TARGET], stdin=subprocess.PIPE). \
                 communicate(input='a\n1\nw\n')
     except subprocess.CalledProcessError as e:
@@ -142,26 +142,26 @@ def cplive(args):
 
     df = ''
     if not args.squashfs :
-	df = subprocess.check_output(['df']).split('\n')
-	line = next((line for line in df if re.search(r'/lib/live/', line)), '')
-	m = re.search(r'(/lib/live/\S+)', line)
-	if not m:
-	    sys.exit('--squashfs is empty and "df" finds no /lib/live/...')
-	args.squashfs = m.group(1)
+        df = subprocess.check_output(['df']).split('\n')
+        line = next((line for line in df if re.search(r'/lib/live/', line)), '')
+        m = re.search(r'(/lib/live/\S+)', line)
+        if not m:
+            sys.exit('--squashfs is empty and "df" finds no /lib/live/...')
+        args.squashfs = m.group(1)
     if re.search(r'\.squashfs$', args.squashfs):
-	# the mount point name ends in .squashfs => we were booted toram, files in iso are inaccessible, the squashfs image will have to be accessed using dd
-	sq_mp = args.squashfs
+        # the mount point name ends in .squashfs => we were booted toram, files in iso are inaccessible, the squashfs image will have to be accessed using dd
+        sq_mp = args.squashfs
     else:
-	if os.path.isdir(args.squashfs):
-	    squashfs_list = find_files(args.squashfs, '*\.squashfs')
-	    if not squashfs_list:
-		sys.exit('cannot find *.squashfs under '+args.squashfs)
-	    if len(squashfs_list) > 1:
-		warnings.warn('found more than one squashfs')
-	    args.squashfs += '/' + squashfs_list[0]
-	    print 'using ' + args.squashfs + ' as rootfs'
-	# https://stackoverflow.com/questions/32073498/check-if-file-is-readable-with-python-try-or-if-else
-	sq_mp = mounted_at(loopback=args.squashfs)
+        if os.path.isdir(args.squashfs):
+            squashfs_list = find_files(args.squashfs, '*\.squashfs')
+            if not squashfs_list:
+                sys.exit('cannot find *.squashfs under '+args.squashfs)
+            if len(squashfs_list) > 1:
+                warnings.warn('found more than one squashfs')
+            args.squashfs += '/' + squashfs_list[0]
+            print('using ' + args.squashfs + ' as rootfs')
+        # https://stackoverflow.com/questions/32073498/check-if-file-is-readable-with-python-try-or-if-else
+        sq_mp = mounted_at(loopback=args.squashfs)
     sq_bn = args.squashfs[args.squashfs.rfind('/')+1:]
 
     kernel_fp = find_boot_files(args.kernel, 'vmlinuz', sq_mp)
@@ -171,56 +171,56 @@ def cplive(args):
 
     target_mp = mounted_at(tdev)
     if args.dest_dir[0] != '/':
-	args.dest_dir = '/' + args.dest_dir
+        args.dest_dir = '/' + args.dest_dir
     dst = target_mp + args.dest_dir
     if dst[-1] != '/':
-	dst += '/'
+        dst += '/'
     subprocess.call(['mkdir', '-p', dst])
     for f in [kernel_fp, initrd_fp]:
-        print 'copying '+f+' to '+dst+' ...'
-	if not args.dryrun:
-	    copy2(f, dst)
+        print('copying '+f+' to '+dst+' ...')
+        if not args.dryrun:
+            copy2(f, dst)
     if sq_mp == args.squashfs:
-	print "dd'ing /dev/loop0 to "+dst+" as "+ sq_bn
-	if not args.dryrun:
-	    subprocess.call(['dd', 'if=/dev/loop0', 'of='+dst+'/'+sq_bn])
+        print("dd'ing /dev/loop0 to "+dst+" as "+ sq_bn)
+        if not args.dryrun:
+            subprocess.call(['dd', 'if=/dev/loop0', 'of='+dst+'/'+sq_bn])
     else:
-        print 'copying '+args.squashfs+' to '+dst+' ...'
-	if not args.dryrun:
-	    copy2(args.squashfs, dst)
+        print('copying '+args.squashfs+' to '+dst+' ...')
+        if not args.dryrun:
+            copy2(args.squashfs, dst)
 
     cfg_entry = '''
 label {dest}-toram-{lid}
-	menu label {dest} linux live CD {lid} boot to ram!
-	kernel /{dest}/{kernel}
-	append initrd=/{dest}/{initrd} boot=live live-media-path=/{dest} toram={squashfs}
+        menu label {dest} linux live CD {lid} boot to ram!
+        kernel /{dest}/{kernel}
+        append initrd=/{dest}/{initrd} boot=live live-media-path=/{dest} toram={squashfs}
 '''
     if args.profile:
-	cfg_entry += '''
+        cfg_entry += '''
 label {dest}-persistence-{lid}
-	menu label {dest} linux live CD {lid} w/ persistence
-	kernel /{dest}/{kernel}
-	append initrd=/{dest}/{initrd} boot=live live-media-path=/{dest} persistence persistence-path=/{dest} persistence-label={prof}
+        menu label {dest} linux live CD {lid} w/ persistence
+        kernel /{dest}/{kernel}
+        append initrd=/{dest}/{initrd} boot=live live-media-path=/{dest} persistence persistence-path=/{dest} persistence-label={prof}
 '''
     cfg_entry = cfg_entry.format(
-	lid=str(os.getpid()),
-	dest=args.dest_dir[1:],
-	kernel=args.kernel,
-	initrd=args.initrd,
-	squashfs=sq_bn,
-	prof=args.profile
+        lid=str(os.getpid()),
+        dest=args.dest_dir[1:],
+        kernel=args.kernel,
+        initrd=args.initrd,
+        squashfs=sq_bn,
+        prof=args.profile
     )
     cfg_entry = re.sub(r'/{2,}', '/', cfg_entry)
     if not args.dryrun:
-	with open(target_mp+'/boot/syslinux/extlinux.conf', 'a') as cfg_file:
-	    cfg_file.write(cfg_entry)
+        with open(target_mp+'/boot/syslinux/extlinux.conf', 'a') as cfg_file:
+            cfg_file.write(cfg_entry)
     else:
-	print cfg_entry
+        print(cfg_entry)
 
     if args.profile:
-	pmd = '/tmp/mbootuz-' + str(os.getpid()) + '-pers'
-	pimg = target_mp + args.dest_dir + '/' +args.profile
-	cmds='''
+        pmd = '/tmp/mbootuz-' + str(os.getpid()) + '-pers'
+        pimg = target_mp + args.dest_dir + '/' +args.profile
+        cmds='''
 dd count={size} bs=1048576 < /dev/zero > {pimg}
 mkfs -t ext4 {pimg}
 mkdir {pmd}
@@ -230,9 +230,9 @@ sync
 umount {pmd}
 rmdir {pmd}
 '''.format(size=args.persize, pimg=pimg, pmd=pmd)
-	print 'creating persistence image file '+pimg+' ...'
-	if not args.dryrun:
-	    subprocess.call(cmds, shell=True)
+        print('creating persistence image file '+pimg+' ...')
+        if not args.dryrun:
+            subprocess.call(cmds, shell=True)
 
 def normalize_size(s):
     if (re.search(r'^\d+k$', s, flags=re.IGNORECASE)):
@@ -248,8 +248,8 @@ G = {
     'subcmds': {
         'wipe': wipe,
         'mkboot': mkboot,
-	'mklive': mklive,
-	'cplive': cplive,
+        'mklive': mklive,
+        'cplive': cplive,
     },
 }
 
@@ -288,10 +288,10 @@ if not args.SUBCMD in G['subcmds']:
 
 if args.TARGET == '/dev/sda':
     if not 'force_sda' in args.options:
-	sys.exit('use -o force_sda to enable /dev/sda as TARGET')
+        sys.exit('use -o force_sda to enable /dev/sda as TARGET')
 else:
     if not re.search(r'^/dev/sd[b-z]$', args.TARGET):
-	sys.exit('error: I only accept /dev/sda ... /dev/sdz as TARGET')
+        sys.exit('error: I only accept /dev/sda ... /dev/sdz as TARGET')
 
 args.size = normalize_size(args.size)
 args.persize = normalize_size(args.persize)
