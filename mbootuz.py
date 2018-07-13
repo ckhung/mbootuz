@@ -48,7 +48,7 @@ def cleanup(mount_point):
     subprocess.call(['rmdir', mount_point])
 
 def mounted_at(dev='', loopback=''):
-    df = subprocess.check_output(['df'])
+    df = subprocess.check_output(['df']).decode("utf-8")
     if dev:
         fn = dev[dev.rfind('/')+1:]
         dev_or_loop = dev
@@ -68,7 +68,7 @@ def mounted_at(dev='', loopback=''):
             subprocess.check_output(['mount', dev_or_loop, target_mp])
         except subprocess.CalledProcessError as e:
             subprocess.call(['rmdir', target_mp])
-            sys.exit('mount failure [' + e.output +
+            sys.exit('mount failure [' + e.output.decode("utf-8") +
                 '], mbootuz aborted')
         atexit.register(cleanup, target_mp)
         return target_mp
@@ -83,14 +83,14 @@ def mkboot(args):
         subprocess.call(['dd', 'bs=440', 'count=1',
             'if=/usr/lib/syslinux/mbr/mbr.bin', 'of='+args.TARGET])
         time.sleep(1)
-        tmp = subprocess.check_output(['fdisk', '-l', args.TARGET])
+        tmp = subprocess.check_output(['fdisk', '-l', args.TARGET]).decode("utf-8")
         if not re.search(tdev + r'\b', tmp):
             sys.exit('unexpected error: no entry for ' + tdev + ' in `fdisk -l`')
         if not re.search(tdev + r'\s+\*', tmp):
             # partition was not set active
             print('using fdisk to activate ' + tdev)
             subprocess.Popen(['fdisk', args.TARGET], stdin=subprocess.PIPE). \
-                communicate(input='a\n1\nw\n')
+                communicate(input=b'a\n1\nw\n')
     except subprocess.CalledProcessError as e:
         warnings.warn(args.TARGET +
             ' is not partitioned? using whole disk as one big file system')
@@ -101,7 +101,7 @@ def mkboot(args):
 
 def find_files(path, pattern):
     n = len(path)
-    r = subprocess.check_output(['find', path, '-name', pattern]).split('\n')
+    r = subprocess.check_output(['find', path, '-name', pattern]).decode("utf-8").split('\n')
     r = [x[n:].lstrip('/') for x in r]
     return [x for x in r if x]
 
@@ -134,7 +134,7 @@ def mklive(args):
 def cplive(args):
     tdev = args.TARGET
     try:
-        subprocess.check_output(['ls', tdev+'1'])
+        subprocess.check_output(['ls', tdev+'1']).decode("utf-8")
         tdev += '1'
     except subprocess.CalledProcessError as e:
         warnings.warn(args.TARGET +
@@ -142,7 +142,7 @@ def cplive(args):
 
     df = ''
     if not args.squashfs :
-        df = subprocess.check_output(['df']).split('\n')
+        df = subprocess.check_output(['df']).decode("utf-8").split('\n')
         line = next((line for line in df if re.search(r'/lib/live/', line)), '')
         m = re.search(r'(/lib/live/\S+)', line)
         if not m:
@@ -297,7 +297,7 @@ args.size = normalize_size(args.size)
 args.persize = normalize_size(args.persize)
 args.max = normalize_size(args.max)
 G['dev_size'] = normalize_size(
-    subprocess.check_output(['fdisk', '-s', args.TARGET]).strip()+'K')
+    subprocess.check_output(['fdisk', '-s', args.TARGET]).decode("utf-8").strip()+'K')
 
 G['subcmds'][args.SUBCMD](args)
 
