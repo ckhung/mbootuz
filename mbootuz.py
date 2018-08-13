@@ -39,7 +39,7 @@ def wipe(args):
     fdisk_cmds = re.sub(r'^[ \t]*', '', re.sub(r' *#.*', '',
         fdisk_cmds[1:-1]), flags=re.MULTILINE)
     subprocess.Popen(['fdisk', args.TARGET], stdin=subprocess.PIPE). \
-        communicate(input=fdisk_cmds)
+        communicate(input=fdisk_cmds.encode())
     subprocess.call(['mkfs', '-t', 'vfat', args.TARGET+'1'])
 
 def cleanup(mount_point):
