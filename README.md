@@ -1,14 +1,17 @@
 # mbootuz
 
-mbootuz makes it easier for sys admins to write simple shell scripts
+**Note: mbootuz.py only works with traditional MBR-partitioned disks.
+It does not work with GPT-partitioned disks.**
+
+mbootuz.py makes it easier for sys admins to write simple shell scripts
 for creating bootable usb flash drive (usb stick).
 [The English doc is incomplete but still valid.
-Info about ```mbootuz cplive``` is missing.
+Info about ```mbootuz.py cplive``` is missing.
 For now, you can follow the links and ```commands``` in the zh_TW doc.
 It is written more as a tutorial than a reference manual
 and suitable for trying in the text order.]
 
-mbootuz 的目標是要讓系統管理員可以寫簡單的 shell scripts 來建立開機隨身碟。
+mbootuz.py 的目標是要讓系統管理員可以寫簡單的 shell scripts 來建立開機隨身碟。
 中文文件在後半部。
 
 ## Introduction
@@ -122,6 +125,9 @@ Obviously you can change the source code to remove this limitation.
 
 
 ## 一、 簡介
+
+** 注意： mbootuz.py 僅限用於處理傳統 MBR 方式分割的硬碟/隨身碟。
+mbootuz.py 不適用於處理 GPT 方式分割的硬碟/隨身碟。**
 
 ```mbootuz.py``` 讓你可以用幾個簡單的指令
 (甚至可以寫 shell script) 來製作 linux 開機隨身碟。
